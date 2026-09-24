@@ -64,6 +64,7 @@ const ROUTE_CLASSIFICATION = {
   '/settings/issuers': ROUTE_TYPES.PRIVATE,
   '/settings/organizations': ROUTE_TYPES.PRIVATE,
   '/settings/activity': ROUTE_TYPES.PRIVATE,
+  '/settings/usage': ROUTE_TYPES.PRIVATE,
 
   // Embeddable public verification widget (issue #196) - public but
   // deliberately non-indexable: it's meant to be embedded on relying-party

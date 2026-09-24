@@ -8,6 +8,7 @@ import { CursorPagination, type PaginationState } from "@/components/common/curs
 import { ResultsHeading } from "@/components/common/results-heading";
 import { ResolveConflictDialog } from "@/components/forms/resolve-conflict-dialog";
 import { StatusBadge } from "@/components/common/production-ui";
+import { IssuerAttestations } from "@/components/issuers/issuer-attestations";
 import { formatMessage } from "@/lib/i18n";
 import { ApiConflictError } from "@/lib/api/client";
 import { useConflictResolution } from "@/hooks/use-conflict-resolution";
@@ -51,6 +52,7 @@ export function IssuerList({
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingIssuerId, setEditingIssuerId] = useState<string | null>(null);
+  const [expandedAttestationsId, setExpandedAttestationsId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     type: "suspend" | "activate" | "revoke";
     issuerId: string;
@@ -214,35 +216,49 @@ export function IssuerList({
               token={token}
             />
           ) : (
-            <IssuerRow
-              key={issuer.id}
-              issuer={issuer}
-              organizationName={getOrganizationName(issuer.organizationId)}
-              isLoading={actionLoading === issuer.id}
-              role={role}
-              onEdit={() => setEditingIssuerId(issuer.id)}
-              onSuspend={() =>
-                setConfirmAction({
-                  type: "suspend",
-                  issuerId: issuer.id,
-                  issuerName: issuer.name,
-                })
-              }
-              onActivate={() =>
-                setConfirmAction({
-                  type: "activate",
-                  issuerId: issuer.id,
-                  issuerName: issuer.name,
-                })
-              }
-              onRevoke={() =>
-                setConfirmAction({
-                  type: "revoke",
-                  issuerId: issuer.id,
-                  issuerName: issuer.name,
-                })
-              }
-            />
+            <div key={issuer.id} className="grid gap-3">
+              <IssuerRow
+                issuer={issuer}
+                organizationName={getOrganizationName(issuer.organizationId)}
+                isLoading={actionLoading === issuer.id}
+                role={role}
+                onEdit={() => setEditingIssuerId(issuer.id)}
+                isAttestationsExpanded={expandedAttestationsId === issuer.id}
+                onSuspend={() =>
+                  setConfirmAction({
+                    type: "suspend",
+                    issuerId: issuer.id,
+                    issuerName: issuer.name,
+                  })
+                }
+                onActivate={() =>
+                  setConfirmAction({
+                    type: "activate",
+                    issuerId: issuer.id,
+                    issuerName: issuer.name,
+                  })
+                }
+                onRevoke={() =>
+                  setConfirmAction({
+                    type: "revoke",
+                    issuerId: issuer.id,
+                    issuerName: issuer.name,
+                  })
+                }
+                onToggleAttestations={() =>
+                  setExpandedAttestationsId((current) => (current === issuer.id ? null : issuer.id))
+                }
+              />
+              {expandedAttestationsId === issuer.id && (
+                <IssuerAttestations
+                  issuerId={issuer.id}
+                  issuerName={issuer.name}
+                  issuerStatus={issuer.status}
+                  viewerRole={role ?? null}
+                  token={token}
+                />
+              )}
+            </div>
           ),
         )}
       </div>
@@ -339,18 +355,22 @@ function IssuerRow({
   isLoading,
   role,
   onEdit,
+  isAttestationsExpanded,
   onSuspend,
   onActivate,
   onRevoke,
+  onToggleAttestations,
 }: {
   issuer: IssuerWithRevision;
   organizationName: string;
   isLoading: boolean;
   role: string | undefined;
   onEdit: () => void;
+  isAttestationsExpanded: boolean;
   onSuspend: () => void;
   onActivate: () => void;
   onRevoke: () => void;
+  onToggleAttestations: () => void;
 }) {
   // A transition is offered only when it's both a valid status change for
   // this issuer *and* something the current role is permitted to do
@@ -395,6 +415,14 @@ function IssuerRow({
           className="h-8 rounded border border-white/15 px-3 text-xs font-medium text-white hover:bg-white/10 disabled:opacity-50 transition"
         >
           Edit
+        </button>
+        <button
+          aria-expanded={isAttestationsExpanded}
+          className="h-8 rounded border border-white/15 px-3 text-xs font-medium text-white hover:bg-white/5 transition"
+          onClick={onToggleAttestations}
+          type="button"
+        >
+          {isAttestationsExpanded ? "Hide Attestations" : "Manage Attestations"}
         </button>
         {canActivate && (
           <button

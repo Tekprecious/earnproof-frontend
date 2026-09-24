@@ -6,11 +6,12 @@ import { ArtifactExport } from "@/components/proofs/artifact-export";
 import { PaymentListSkeleton } from "@/components/common/skeleton/payment-list-skeleton";
 import { Redacted } from "@/components/common/redacted";
 import { usePrivacy } from "@/contexts/privacy-context";
+import { Timestamp } from "@/components/common/timestamp";
+import { WalletConsentScreen } from "@/components/auth/wallet-consent-screen";
 import { NetworkMismatchAlert } from "@/components/wallet/network-mismatch-alert";
 import { appConfig } from "@/config/app";
 import { apiClient, bearer } from "@/lib/api/client";
 import { buildCredentialExport, buildVerificationLinkExport } from "@/lib/credentials/export";
-import { formatDateTime } from "@/lib/i18n";
 import { resolveIdempotencyKey, type IdempotencyState, type ProofIntent } from "@/lib/proofs/idempotency";
 import { createSubmissionGuard } from "@/lib/proofs/submission-guard";
 import {
@@ -21,6 +22,13 @@ import type {
   NetworkCompatibilityCheckResult,
   WalletNetworkContext,
 } from "@/lib/wallet/types";
+
+type PendingChallenge = {
+  id: string;
+  message: string;
+  expiresAt: string;
+  walletAddress: string;
+};
 
 type SessionUser = {
   id: string;
@@ -77,6 +85,8 @@ export function CreateProofFlow() {
   const [periodStart, setPeriodStart] = useState("2026-08-01");
   const [periodEnd, setPeriodEnd] = useState("2026-08-31");
   const [proof, setProof] = useState<ProofResponse | null>(null);
+  const [pendingChallenge, setPendingChallenge] = useState<PendingChallenge | null>(null);
+  const [isSigning, setIsSigning] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
@@ -169,8 +179,39 @@ export function CreateProofFlow() {
         body: JSON.stringify({ walletAddress }),
       });
 
-      setStatus("Waiting for wallet signature...");
-      const signature = await signFreighterMessage(challenge.message, walletAddress);
+      // Show the consent screen and wait for an explicit Continue before
+      // signing, rather than immediately prompting Freighter.
+      setStatus(null);
+      setPendingChallenge({ ...challenge, walletAddress });
+    } catch {
+      setStatus(null);
+      setError("Wallet connection failed. Check Freighter and try again.");
+    }
+  }
+
+  function cancelWalletConsent() {
+    setPendingChallenge(null);
+    setStatus(null);
+  }
+
+  async function confirmWalletConsent() {
+    if (!pendingChallenge) return;
+
+    // Re-check the challenge hasn't expired between review and signing —
+    // there's no push mechanism to detect a changed challenge otherwise.
+    if (new Date(pendingChallenge.expiresAt).getTime() <= Date.now()) {
+      setPendingChallenge(null);
+      setError("This signature request expired. Please reconnect your wallet.");
+      return;
+    }
+
+    setIsSigning(true);
+    setError(null);
+    setStatus("Waiting for wallet signature...");
+
+    try {
+      const { id: challengeId, message, walletAddress } = pendingChallenge;
+      const signature = await signFreighterMessage(message, walletAddress);
       if (!signature) {
         setStatus(null);
         setError("Wallet did not return a signature for the challenge.");
@@ -184,7 +225,7 @@ export function CreateProofFlow() {
         path: "/auth/verify",
         method: "POST",
         body: JSON.stringify({
-          challengeId: challenge.id,
+          challengeId,
           walletAddress,
           signature,
         }),
@@ -197,11 +238,14 @@ export function CreateProofFlow() {
       setToken(verified.session.token);
       setUser(verified.user);
       setStatus("Wallet authenticated.");
+      setPendingChallenge(null);
       // Clear network compatibility error after successful auth - the backend validated it
       setNetworkCompatibility(null);
     } catch {
       setStatus(null);
       setError("Wallet connection failed. Check Freighter and try again.");
+    } finally {
+      setIsSigning(false);
     }
   }
 
@@ -381,6 +425,19 @@ export function CreateProofFlow() {
 
   return (
     <div className="grid gap-8 sm:gap-10">
+      {pendingChallenge && (
+        <WalletConsentScreen
+          challenge={{
+            origin: typeof window !== "undefined" ? window.location.origin : appConfig.apiUrl,
+            network: appConfig.stellarNetwork,
+            expiresAt: pendingChallenge.expiresAt,
+            purpose: "Sign in to EarnProof",
+          }}
+          onContinue={confirmWalletConsent}
+          onCancel={cancelWalletConsent}
+          isProcessing={isSigning}
+        />
+      )}
       <section className="grid gap-4 rounded-lg border border-white/10 bg-white/[0.04] p-5">
         <div>
           <h2 className="text-xl font-semibold text-white">Wallet</h2>
@@ -637,9 +694,7 @@ function PaymentRow({
         <p className="mt-1 break-all text-xs text-slate-400">
           <Redacted>{payment.stellarTransactionHash}</Redacted>
         </p>
-        <p className="mt-1 text-xs text-slate-400">
-          {formatDateTime(payment.occurredAt)}
-        </p>
+        <Timestamp className="mt-1 block text-xs text-slate-400" value={payment.occurredAt} />
       </div>
       <select
         aria-label="Payment classification"

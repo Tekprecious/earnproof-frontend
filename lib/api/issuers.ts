@@ -20,10 +20,8 @@ export type PaginatedIssuersResponse = {
   previousCursor: string | null;
 };
 
-export async function getIssuers(token: string, signal: AbortSignal): Promise<Issuer[]> {
 // Re-export revision-aware types for use in forms
 export type { IssuerWithRevision, UpdateIssuerRequestWithRevision };
-
 export async function getIssuers(token: string, signal: AbortSignal): Promise<IssuerWithRevision[]> {
   return retryRead(async (signal) => {
     const issuers = await apiClient<Issuer[]>({

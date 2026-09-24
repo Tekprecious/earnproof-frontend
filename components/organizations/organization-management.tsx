@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CreateOrganizationForm } from "./create-organization-form";
 import { OrganizationList } from "./organization-list";
@@ -39,7 +41,6 @@ function readStoredSession(): SessionData | null {
 
 export function OrganizationManagement() {
   const [session] = useState<SessionData | null>(() => readStoredSession());
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [organizations, setOrganizations] = useState<OrganizationWithRevision[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -252,19 +253,6 @@ export function OrganizationManagement() {
           </div>
         )}
 
-        <OrganizationList
-          organizations={organizations}
-          loading={pagination.isLoading}
-          token={session.token}
-          paginationState={{
-            ...pagination.currentPage,
-            isLoading: pagination.isLoading,
-          }}
-          onPreviousPage={handlePreviousPage}
-          onNextPage={handleNextPage}
-          focusResults={pagination.wasUserInitiated}
-          onOrganizationUpdated={handleOrganizationUpdated}
-        />
         {editingOrgId ? (
           <div className="grid gap-6 rounded-lg border border-white/10 bg-white/[0.04] p-5">
             <div>
@@ -285,8 +273,15 @@ export function OrganizationManagement() {
         ) : (
           <OrganizationList
             organizations={organizations}
-            loading={loading}
+            loading={pagination.isLoading}
             token={session.token}
+            paginationState={{
+              ...pagination.currentPage,
+              isLoading: pagination.isLoading,
+            }}
+            onPreviousPage={handlePreviousPage}
+            onNextPage={handleNextPage}
+            focusResults={pagination.wasUserInitiated}
             onOrganizationUpdated={handleOrganizationUpdated}
             onEditOrganization={(orgId) => setEditingOrgId(orgId)}
             onLifecycleAction={(action, orgId, orgName) =>

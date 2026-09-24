@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CreateIssuerForm } from "./create-issuer-form";
 import { IssuerList } from "./issuer-list";
@@ -38,8 +40,6 @@ function readStoredSession(): SessionData | null {
 
 export function IssuerManagement() {
   const [session] = useState<SessionData | null>(() => readStoredSession());
-  const [issuers, setIssuers] = useState<Issuer[]>([]);
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [issuers, setIssuers] = useState<IssuerWithRevision[]>([]);
   const [organizations, setOrganizations] = useState<OrganizationWithRevision[]>([]);
   const [loading, setLoading] = useState(false);

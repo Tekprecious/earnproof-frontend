@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { WebVitalsReporter } from "@/components/common/web-vitals-reporter";
+import { PrivacyProvider } from "@/contexts/privacy-context";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -39,8 +40,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
-        <WebVitalsReporter />
-        {children}
+        <PrivacyProvider>
+          <WebVitalsReporter />
+          {children}
+        </PrivacyProvider>
       </body>
     </html>
   );

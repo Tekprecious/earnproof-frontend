@@ -17,7 +17,17 @@ const navigationItems = [
   {
     name: "Trusted Sources",
     href: "/settings/trusted-sources",
-    description: "Configure and test trusted source connections",
+    description: "Manage trusted sources and their linked issuer identities",
+  },
+  {
+    name: "Supported Assets",
+    href: "/settings/assets",
+    description: "Manage which Stellar assets can be indexed and used for proofs",
+  },
+  {
+    name: "Sessions",
+    href: "/settings/sessions",
+    description: "View and revoke active sessions on other devices",
   },
   {
     name: "Audit Log",

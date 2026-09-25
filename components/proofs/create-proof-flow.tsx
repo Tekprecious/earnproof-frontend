@@ -12,9 +12,15 @@ import { NetworkMismatchAlert } from "@/components/wallet/network-mismatch-alert
 import { appConfig } from "@/config/app";
 import { apiClient, bearer } from "@/lib/api/client";
 import { buildCredentialExport, buildVerificationLinkExport } from "@/lib/credentials/export";
-import { resolveIdempotencyKey, type IdempotencyState, type ProofIntent } from "@/lib/proofs/idempotency";
+import { resolveIdempotencyKey, type IdempotencyState } from "@/lib/proofs/idempotency";
 import { createSubmissionGuard } from "@/lib/proofs/submission-guard";
 import {
+  buildMinimumIncomeProofPayload,
+  DEFAULT_PROOF_EXPIRES_IN_DAYS,
+  type MinimumIncomeProofPayload,
+} from "@/lib/proofs/minimum-income-payload";
+import { useProofReviewGate } from "@/lib/proofs/useProofReviewGate";
+import { ProofReviewSummary } from "@/components/proofs/proof-review-summary";
   isSigningAllowed,
   validateNetworkCompatibility,
 } from "@/lib/wallet/network-compatibility";
@@ -22,19 +28,18 @@ import type {
   NetworkCompatibilityCheckResult,
   WalletNetworkContext,
 } from "@/lib/wallet/types";
+import {
+  readStoredSession,
+  storeSession,
+  clearStoredSession,
+  type SessionUser,
+} from "@/lib/session";
 
 type PendingChallenge = {
   id: string;
   message: string;
   expiresAt: string;
   walletAddress: string;
-};
-
-type SessionUser = {
-  id: string;
-  walletAddress: string;
-  walletHash: string;
-  role: string;
 };
 
 type PaymentClassification =
@@ -66,8 +71,6 @@ type ProofResponse = {
     };
   };
 };
-
-const SESSION_KEY = "earnproof.session";
 
 export function CreateProofFlow() {
   const { isRedacted } = usePrivacy();
@@ -101,6 +104,7 @@ export function CreateProofFlow() {
   // update state. See lib/proofs/submission-guard.ts.
   const submissionGuardRef = useRef(createSubmissionGuard());
   const idempotencyRef = useRef<IdempotencyState | null>(null);
+  const reviewGate = useProofReviewGate<MinimumIncomeProofPayload>();
 
   useEffect(() => {
     if (error) {
@@ -139,6 +143,34 @@ export function CreateProofFlow() {
       ),
     [payments, selected],
   );
+
+  // The single source of truth for what would be submitted right now,
+  // given the live form state. Both opening the review step and the
+  // change-detection effect below call this same function, so "what the
+  // user reviews" and "what gets submitted" can never independently drift.
+  const currentPayload: MinimumIncomeProofPayload | null = useMemo(() => {
+    if (selectedIncomePayments.length === 0) return null;
+    const intent: ProofIntent = {
+      selectedPaymentIds: selectedIncomePayments.map((payment) => payment.id),
+      thresholdAmount,
+      assetCode: selectedIncomePayments[0].assetCode,
+      assetIssuer: selectedIncomePayments[0].assetIssuer ?? undefined,
+      periodStart: `${periodStart}T00:00:00.000Z`,
+      periodEnd: `${periodEnd}T23:59:59.000Z`,
+    };
+    return buildMinimumIncomeProofPayload(intent, DEFAULT_PROOF_EXPIRES_IN_DAYS);
+  }, [selectedIncomePayments, thresholdAmount, periodStart, periodEnd]);
+
+  // Any change to a live input this payload is built from invalidates a
+  // prior confirmation — the user must review again before submitting.
+  useEffect(() => {
+    if (currentPayload) {
+      reviewGate.refreshLiveSnapshot(currentPayload);
+    }
+    // reviewGate's functions are stable (useCallback with no deps), so it's
+    // safe to omit it here and depend only on the payload's own identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPayload]);
 
   async function connectWallet() {
     setError(null);
@@ -231,10 +263,7 @@ export function CreateProofFlow() {
         }),
       });
 
-      window.localStorage.setItem(
-        SESSION_KEY,
-        JSON.stringify({ token: verified.session.token, user: verified.user }),
-      );
+      storeSession({ token: verified.session.token, user: verified.user });
       setToken(verified.session.token);
       setUser(verified.user);
       setStatus("Wallet authenticated.");
@@ -315,15 +344,35 @@ export function CreateProofFlow() {
     }
   }
 
-  async function createProof(event: FormEvent<HTMLFormElement>) {
+  // Step 1: form submit opens (or re-opens) the review step instead of
+  // calling the API directly. The actual mutation only happens from
+  // submitProof(), gated on reviewGate.isConfirmed.
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (reviewGate.isConfirmed && reviewGate.reviewedPayload) {
+      void submitProof(reviewGate.reviewedPayload);
+      return;
+    }
+
     if (!token) {
       setError("Connect a wallet before creating a proof.");
       return;
     }
-
-    if (selectedIncomePayments.length === 0) {
+    if (!currentPayload) {
       setError("Select at least one eligible income payment.");
+      return;
+    }
+    setError(null);
+    reviewGate.openReview(currentPayload);
+  }
+
+  // Step 2: the actual mutation. `payload` is always the frozen snapshot
+  // from reviewGate, never re-derived from live state, so this is
+  // guaranteed byte-equivalent to what the user reviewed and confirmed.
+  async function submitProof(payload: MinimumIncomeProofPayload) {
+    if (!token) {
+      setError("Connect a wallet before creating a proof.");
       return;
     }
 
@@ -347,7 +396,7 @@ export function CreateProofFlow() {
     setProof(null);
     setStatus("Creating signed minimum-income proof...");
 
-    const intent: ProofIntent = {
+    const intent = {
       selectedPaymentIds: selectedIncomePayments.map((payment) => payment.id),
       thresholdAmount,
       assetCode: selectedIncomePayments[0].assetCode,
@@ -358,6 +407,14 @@ export function CreateProofFlow() {
     // A retry of the same intent (same selection, threshold, and period)
     // reuses the previous idempotency key; anything else mints a new one.
     // See lib/proofs/idempotency.ts.
+    const intent: ProofIntent = {
+      selectedPaymentIds: payload.selectedPaymentIds,
+      thresholdAmount: payload.thresholdAmount,
+      assetCode: payload.assetCode,
+      assetIssuer: payload.assetIssuer,
+      periodStart: payload.periodStart,
+      periodEnd: payload.periodEnd,
+    };
     const idempotency = resolveIdempotencyKey(idempotencyRef.current, intent);
     idempotencyRef.current = idempotency;
 
@@ -366,15 +423,7 @@ export function CreateProofFlow() {
         path: "/proofs/minimum-income",
         method: "POST",
         headers: { ...bearer(token), "Idempotency-Key": idempotency.key },
-        body: JSON.stringify({
-          selectedPaymentIds: intent.selectedPaymentIds,
-          thresholdAmount: intent.thresholdAmount,
-          assetCode: intent.assetCode,
-          assetIssuer: intent.assetIssuer,
-          periodStart: intent.periodStart,
-          periodEnd: intent.periodEnd,
-          expiresInDays: 30,
-        }),
+        body: JSON.stringify(payload),
       });
 
       // Drop this response if something (a wallet disconnect, most likely)
@@ -391,6 +440,7 @@ export function CreateProofFlow() {
       // even with identical field values, is a new intent and should get
       // its own key rather than silently reusing a completed one.
       idempotencyRef.current = null;
+      reviewGate.reset();
     } catch {
       if (!submissionGuardRef.current.isCurrent(submissionId)) {
         return;
@@ -412,7 +462,7 @@ export function CreateProofFlow() {
     submissionGuardRef.current.invalidate();
     idempotencyRef.current = null;
     setIsSubmittingProof(false);
-    window.localStorage.removeItem(SESSION_KEY);
+    clearStoredSession();
     setToken(null);
     setUser(null);
     setPayments([]);
@@ -543,7 +593,7 @@ export function CreateProofFlow() {
 
       <form
         className="grid gap-4 rounded-lg border border-white/10 bg-white/[0.04] p-5"
-        onSubmit={createProof}
+        onSubmit={handleFormSubmit}
       >
         <div>
           <h2 className="text-xl font-semibold text-white">Minimum Income Proof</h2>
@@ -572,14 +622,26 @@ export function CreateProofFlow() {
             value={periodEnd}
           />
         </div>
-        <button
-          aria-describedby={error ? "create-proof-feedback" : undefined}
-          className="h-10 w-fit rounded-md bg-cyan-300 px-4 text-xs font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={!token || selectedIncomePayments.length === 0 || isSubmittingProof}
-          type="submit"
-        >
-          {isSubmittingProof ? "Creating proof..." : "Create proof"}
-        </button>
+
+        {reviewGate.reviewedPayload ? (
+          <ProofReviewSummary
+            payload={reviewGate.reviewedPayload}
+            qualifyingPaymentCount={selectedIncomePayments.length}
+            isConfirmed={reviewGate.isConfirmed}
+            onConfirm={reviewGate.confirm}
+            onCancel={reviewGate.cancel}
+            isSubmitting={isSubmittingProof}
+          />
+        ) : (
+          <button
+            aria-describedby={error ? "create-proof-feedback" : undefined}
+            className="h-10 w-fit rounded-md bg-cyan-300 px-4 text-xs font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!token || selectedIncomePayments.length === 0 || isSubmittingProof}
+            type="submit"
+          >
+            Review before creating
+          </button>
+        )}
       </form>
 
       {status || error || proof ? (
@@ -643,24 +705,6 @@ export function CreateProofFlow() {
       ) : null}
     </div>
   );
-}
-
-function readStoredSession() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const stored = window.localStorage.getItem(SESSION_KEY);
-  if (!stored) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(stored) as { token: string; user: SessionUser };
-  } catch {
-    window.localStorage.removeItem(SESSION_KEY);
-    return null;
-  }
 }
 
 function PaymentRow({

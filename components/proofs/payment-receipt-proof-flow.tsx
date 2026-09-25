@@ -20,13 +20,12 @@ import type {
   NetworkCompatibilityCheckResult,
   WalletNetworkContext,
 } from "@/lib/wallet/types";
-
-type SessionUser = {
-  id: string;
-  walletAddress: string;
-  walletHash: string;
-  role: string;
-};
+import {
+  readStoredSession,
+  storeSession,
+  clearStoredSession,
+  type SessionUser,
+} from "@/lib/session";
 
 type PaymentClassification =
   | "INCOME"
@@ -45,8 +44,6 @@ type Payment = {
   classification: PaymentClassification;
   isEligible: boolean;
 };
-
-const SESSION_KEY = "earnproof.session";
 
 export function PaymentReceiptProofFlow() {
   const initialSession = useMemo(() => readStoredSession(), []);
@@ -165,10 +162,7 @@ export function PaymentReceiptProofFlow() {
         }),
       });
 
-      window.localStorage.setItem(
-        SESSION_KEY,
-        JSON.stringify({ token: verified.session.token, user: verified.user }),
-      );
+      storeSession({ token: verified.session.token, user: verified.user });
       setToken(verified.session.token);
       setUser(verified.user);
       setStatus("Wallet authenticated.");
@@ -264,7 +258,7 @@ export function PaymentReceiptProofFlow() {
   }
 
   function disconnect() {
-    window.localStorage.removeItem(SESSION_KEY);
+    clearStoredSession();
     setToken(null);
     setUser(null);
     setPayments([]);
@@ -441,24 +435,6 @@ export function PaymentReceiptProofFlow() {
       ) : null}
     </div>
   );
-}
-
-function readStoredSession() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const stored = window.localStorage.getItem(SESSION_KEY);
-  if (!stored) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(stored) as { token: string; user: SessionUser };
-  } catch {
-    window.localStorage.removeItem(SESSION_KEY);
-    return null;
-  }
 }
 
 // Import Freighter wallet functions (same as in create-proof-flow.tsx)

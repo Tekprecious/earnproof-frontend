@@ -6,7 +6,6 @@ import { IssuerList } from "./issuer-list";
 import { getIssuersPaginated } from "@/lib/api/issuers";
 import { getOrganizations } from "@/lib/api/organizations";
 import { usePagination } from "@/lib/hooks/use-pagination";
-import type { Issuer, Organization } from "@/lib/api/generated/v1";
 import type { IssuerWithRevision } from "@/lib/api/issuers";
 import type { OrganizationWithRevision } from "@/lib/api/organizations";
 import { readStoredSession, type Session as SessionData } from "@/lib/session";
@@ -199,6 +198,7 @@ export function IssuerManagement() {
           organizations={organizations}
           loading={pagination.isLoading}
           token={session.token}
+          walletAddress={session.user.walletAddress}
           role={session.user.role}
           paginationState={{
             ...pagination.currentPage,

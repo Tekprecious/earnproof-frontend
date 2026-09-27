@@ -5,25 +5,13 @@ import { CreateOrganizationForm } from "./create-organization-form";
 import { OrganizationList } from "./organization-list";
 import { getOrganizationsPaginated } from "@/lib/api/organizations";
 import { usePagination } from "@/lib/hooks/use-pagination";
-import type { Organization } from "@/lib/api/generated/v1";
-import { OrganizationEditForm } from "./organization-edit-form";
-import { LifecycleConfirmationDialog } from "./lifecycle-confirmation-dialog";
-import { getOrganizations, performLifecycleAction, type LifecycleAction } from "@/lib/api/organizations";
 import type { OrganizationWithRevision } from "@/lib/api/organizations";
 import { readStoredSession, type Session as SessionData } from "@/lib/session";
 
 export function OrganizationManagement() {
   const [session] = useState<SessionData | null>(() => readStoredSession());
   const [organizations, setOrganizations] = useState<OrganizationWithRevision[]>([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editingOrgId, setEditingOrgId] = useState<string | null>(null);
-  const [lifecycleAction, setLifecycleAction] = useState<{
-    action: LifecycleAction;
-    organizationId: string;
-    organizationName: string;
-  } | null>(null);
-  const [lifecycleLoading, setLifecycleLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const requestCounterRef = useRef(0);
   const sessionToken = session?.token ?? null;
@@ -118,10 +106,9 @@ export function OrganizationManagement() {
 
   const handleOrganizationUpdated = useCallback((updatedOrg: OrganizationWithRevision) => {
     // Cache refresh: only update after confirmed write success
-    setOrganizations(prev => prev.map(org => 
+    setOrganizations(prev => prev.map(org =>
       org.id === updatedOrg.id ? updatedOrg : org
     ));
-    setEditingOrgId(null);
   }, []);
 
   const handlePreviousPage = useCallback(() => {
@@ -133,34 +120,6 @@ export function OrganizationManagement() {
     pagination.goToNextPage();
     void loadOrganizations(true, false);
   }, [pagination, loadOrganizations]);
-  const handleLifecycleAction = useCallback(async () => {
-    if (!lifecycleAction || !sessionToken) {
-      return;
-    }
-
-    setLifecycleLoading(true);
-
-    try {
-      const controller = new AbortController();
-      const result = await performLifecycleAction(
-        sessionToken,
-        lifecycleAction.organizationId,
-        lifecycleAction.action,
-        controller.signal
-      );
-
-      if (result.success) {
-        // Cache refresh: only update after confirmed write success
-        handleOrganizationUpdated(result.data);
-        setLifecycleAction(null);
-      } else {
-        setError(result.error.message);
-        setLifecycleAction(null);
-      }
-    } finally {
-      setLifecycleLoading(false);
-    }
-  }, [lifecycleAction, sessionToken, handleOrganizationUpdated]);
 
   // Check if user has admin role
   const isAdmin = session?.user.role === "ADMIN" || session?.user.role === "ISSUER";
@@ -263,17 +222,6 @@ export function OrganizationManagement() {
           />
         )}
       </section>
-
-      {/* Lifecycle confirmation dialog */}
-      {lifecycleAction && (
-        <LifecycleConfirmationDialog
-          action={lifecycleAction.action}
-          organizationName={lifecycleAction.organizationName}
-          onConfirm={handleLifecycleAction}
-          onCancel={() => setLifecycleAction(null)}
-          isProcessing={lifecycleLoading}
-        />
-      )}
     </div>
   );
 }

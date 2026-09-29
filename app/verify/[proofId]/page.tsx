@@ -141,10 +141,6 @@ function VerificationResult({
         <p className="text-sm leading-6 text-slate-300 mb-4">
           {getStatusMessage(result.result)}
         </p>
-        <div className="rounded-lg border border-white/10 bg-white/[0.04] p-6">
-          <p className="text-sm leading-6 text-slate-300 mb-4">
-            {getStatusMessage(result.result)}
-          </p>
 
           {result.credential && result.proof ? (
             <dl className="grid gap-4 text-sm text-slate-300 sm:grid-cols-2">

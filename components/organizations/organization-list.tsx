@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { updateOrganization, formatOrganizationStatus, getStatusTone, getOrganization, type LifecycleAction } from "@/lib/api/organizations";
 import { ConfirmationDialog } from "@/components/common/confirmation-dialog";
 import { CursorPagination, type PaginationState } from "@/components/common/cursor-pagination";
@@ -21,6 +21,7 @@ import {
   DataTableRow,
   useDataTableState,
 } from "@/components/common/data-table";
+import { OrganizationMembers } from "@/components/organizations/organization-members";
 import { formatMessage } from "@/lib/i18n";
 import { ApiConflictError } from "@/lib/api/client";
 import { useConflictResolution } from "@/hooks/use-conflict-resolution";
@@ -56,6 +57,7 @@ export function OrganizationList({
 }) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expandedMembersId, setExpandedMembersId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     type: LifecycleAction;
     organizationId: string;
@@ -208,32 +210,48 @@ export function OrganizationList({
           ) : (
             <DataTableBody>
               {pageItems.map((org) => (
-                <OrganizationRow
-                  key={org.id}
-                  organization={org}
-                  isLoading={actionLoading === org.id}
-                  onSuspend={() =>
-                    setConfirmAction({
-                      type: "suspend",
-                      organizationId: org.id,
-                      organizationName: org.name,
-                    })
-                  }
-                  onActivate={() =>
-                    setConfirmAction({
-                      type: "activate",
-                      organizationId: org.id,
-                      organizationName: org.name,
-                    })
-                  }
-                  onRevoke={() =>
-                    setConfirmAction({
-                      type: "revoke",
-                      organizationId: org.id,
-                      organizationName: org.name,
-                    })
-                  }
-                />
+                <Fragment key={org.id}>
+                  <OrganizationRow
+                    organization={org}
+                    isLoading={actionLoading === org.id}
+                    isMembersExpanded={expandedMembersId === org.id}
+                    onSuspend={() =>
+                      setConfirmAction({
+                        type: "suspend",
+                        organizationId: org.id,
+                        organizationName: org.name,
+                      })
+                    }
+                    onActivate={() =>
+                      setConfirmAction({
+                        type: "activate",
+                        organizationId: org.id,
+                        organizationName: org.name,
+                      })
+                    }
+                    onRevoke={() =>
+                      setConfirmAction({
+                        type: "revoke",
+                        organizationId: org.id,
+                        organizationName: org.name,
+                      })
+                    }
+                    onToggleMembers={() =>
+                      setExpandedMembersId((current) => (current === org.id ? null : org.id))
+                    }
+                  />
+                  {expandedMembersId === org.id && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-3">
+                        <OrganizationMembers
+                          organizationId={org.id}
+                          organizationName={org.name}
+                          token={token}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </DataTableBody>
           )}
@@ -338,15 +356,19 @@ export function OrganizationList({
 function OrganizationRow({
   organization,
   isLoading,
+  isMembersExpanded,
   onSuspend,
   onActivate,
   onRevoke,
+  onToggleMembers,
 }: {
   organization: OrganizationWithRevision;
   isLoading: boolean;
+  isMembersExpanded: boolean;
   onSuspend: () => void;
   onActivate: () => void;
   onRevoke: () => void;
+  onToggleMembers: () => void;
 }) {
   const canSuspend = organization.status === "ACTIVE";
   const canActivate = organization.status === "SUSPENDED" || organization.status === "PENDING";
@@ -390,6 +412,14 @@ function OrganizationRow({
 
       <DataTableCell>
         <div className="flex flex-wrap gap-2">
+          <button
+            aria-expanded={isMembersExpanded}
+            className="h-8 rounded border border-white/15 px-3 text-xs font-medium text-white hover:bg-white/5 transition"
+            onClick={onToggleMembers}
+            type="button"
+          >
+            {isMembersExpanded ? "Hide Members" : "Manage Members"}
+          </button>
           {canActivate && (
             <button
               onClick={onActivate}

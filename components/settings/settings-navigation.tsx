@@ -34,6 +34,11 @@ const navigationItems = [
     href: "/settings/audit",
     description: "Filter, verify, and export organization audit records",
   },
+  {
+    name: "Usage & Quotas",
+    href: "/settings/usage",
+    description: "Track quota usage and request rate limits",
+  },
 ];
 
 const personalItems = [

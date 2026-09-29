@@ -1,18 +1,18 @@
 import { PageHeading } from "@/components/common/page-heading";
 import { pageContainer } from "@/components/common/production-ui";
-import { TrustedSourceManagement } from "@/components/trusted-sources/trusted-source-management";
+import { SupportedAssetManagement } from "@/components/supported-assets/supported-asset-management";
 import { PublicShell } from "@/components/layout/public-shell";
 
-export default function TrustedSourcesPage() {
+export default function SupportedAssetsPage() {
   return (
     <PublicShell>
       <section className={`${pageContainer} gap-8 sm:gap-10`}>
         <PageHeading
-          description="Manage trusted sources and their linked issuer identities."
+          description="Manage which Stellar assets can be indexed and used for proofs."
           eyebrow="Administration"
-          title="Trusted Source Management"
+          title="Supported Asset Administration"
         />
-        <TrustedSourceManagement />
+        <SupportedAssetManagement />
       </section>
     </PublicShell>
   );

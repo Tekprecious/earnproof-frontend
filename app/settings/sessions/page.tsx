@@ -1,18 +1,18 @@
 import { PageHeading } from "@/components/common/page-heading";
 import { pageContainer } from "@/components/common/production-ui";
-import { TrustedSourceManagement } from "@/components/trusted-sources/trusted-source-management";
+import { SessionManagement } from "@/components/sessions/session-management";
 import { PublicShell } from "@/components/layout/public-shell";
 
-export default function TrustedSourcesPage() {
+export default function SessionsPage() {
   return (
     <PublicShell>
       <section className={`${pageContainer} gap-8 sm:gap-10`}>
         <PageHeading
-          description="Manage trusted sources and their linked issuer identities."
-          eyebrow="Administration"
-          title="Trusted Source Management"
+          description="View and revoke active sessions on other devices."
+          eyebrow="Account"
+          title="Active Sessions"
         />
-        <TrustedSourceManagement />
+        <SessionManagement />
       </section>
     </PublicShell>
   );
